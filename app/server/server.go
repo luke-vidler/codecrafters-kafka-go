@@ -79,7 +79,6 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 
 		// Write response
-		var err error
 		if useFlexibleResponse {
 			err = protocol.WriteFlexibleResponse(conn, header.CorrelationID, responseBody)
 		} else {
