@@ -7,23 +7,35 @@ import (
 	"net"
 
 	"github.com/codecrafters-io/kafka-starter-go/app/handlers"
+	"github.com/codecrafters-io/kafka-starter-go/app/metadata"
 	"github.com/codecrafters-io/kafka-starter-go/app/protocol"
 )
 
 // Server represents the Kafka broker server
 type Server struct {
-	address string
+	address         string
+	clusterMetadata *metadata.ClusterMetadata
 }
 
 // New creates a new Server instance
 func New(address string) *Server {
 	return &Server{
-		address: address,
+		address:         address,
+		clusterMetadata: metadata.NewClusterMetadata(),
 	}
 }
 
 // Start starts the server and listens for connections
 func (s *Server) Start() error {
+	// Load cluster metadata
+	metadataPath := "/tmp/kraft-combined-logs/__cluster_metadata-0/00000000000000000000.log"
+	if err := s.clusterMetadata.LoadFromLog(metadataPath); err != nil {
+		log.Printf("Warning: failed to load cluster metadata: %v", err)
+		// Continue anyway - we'll return unknown topic errors
+	} else {
+		log.Printf("Loaded cluster metadata: %d topics", len(s.clusterMetadata.Topics))
+	}
+
 	listener, err := net.Listen("tcp", s.address)
 	if err != nil {
 		return fmt.Errorf("failed to bind to %s: %w", s.address, err)
@@ -69,7 +81,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			responseBody = handlers.HandleAPIVersions(header)
 			useFlexibleResponse = false // APIVersions uses v0 response header
 		case protocol.APIKeyDescribeTopicPartitions:
-			responseBody = handlers.HandleDescribeTopicPartitions(header, requestBody)
+			responseBody = handlers.HandleDescribeTopicPartitions(header, requestBody, s.clusterMetadata)
 			useFlexibleResponse = true // DescribeTopicPartitions uses v1 response header (flexible)
 		default:
 			// Return UNSUPPORTED_VERSION for unknown API keys

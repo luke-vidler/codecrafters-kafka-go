@@ -3,11 +3,12 @@ package handlers
 import (
 	"log"
 
+	"github.com/codecrafters-io/kafka-starter-go/app/metadata"
 	"github.com/codecrafters-io/kafka-starter-go/app/protocol"
 )
 
 // HandleDescribeTopicPartitions handles the DescribeTopicPartitions API request
-func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody []byte) []byte {
+func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody []byte, clusterMetadata *metadata.ClusterMetadata) []byte {
 	// Parse the request
 	req, err := protocol.ParseDescribeTopicPartitionsRequest(requestBody)
 	if err != nil {
@@ -21,20 +22,53 @@ func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody [
 		return response.Encode()
 	}
 
-	// Build response with unknown topic errors
+	// Build response for each requested topic
 	var topics []protocol.TopicResponse
 	for _, topic := range req.Topics {
-		// For now, all topics are unknown
-		// Create a zero UUID (00000000-0000-0000-0000-000000000000)
-		var zeroUUID [16]byte
+		// Check if topic exists in metadata
+		topicMeta, exists := clusterMetadata.Topics[topic.Name]
+
+		if !exists {
+			// Topic not found - return unknown topic error
+			var zeroUUID [16]byte
+			topicResp := protocol.TopicResponse{
+				ErrorCode:          protocol.ErrorUnknownTopicOrPartition,
+				Name:               topic.Name,
+				TopicID:            zeroUUID,
+				IsInternal:         false,
+				Partitions:         []protocol.PartitionResponse{},
+				TopicAuthorizedOps: -2147483648,
+			}
+			topics = append(topics, topicResp)
+			continue
+		}
+
+		// Topic exists - build partition information
+		partitions := clusterMetadata.Partitions[topicMeta.TopicID]
+		var partitionResponses []protocol.PartitionResponse
+
+		for _, partMeta := range partitions {
+			partResp := protocol.PartitionResponse{
+				ErrorCode:       protocol.ErrorNone,
+				PartitionIndex:  partMeta.PartitionID,
+				LeaderID:        partMeta.Leader,
+				LeaderEpoch:     partMeta.LeaderEpoch,
+				ReplicaNodes:    partMeta.Replicas,
+				IsrNodes:        partMeta.ISR,
+				EligibleLeaders: []int32{}, // Empty for now
+				LastKnownELR:    []int32{}, // Empty for now
+				OfflineReplicas: []int32{}, // Empty for now
+			}
+			partitionResponses = append(partitionResponses, partResp)
+		}
 
 		topicResp := protocol.TopicResponse{
-			ErrorCode:          protocol.ErrorUnknownTopicOrPartition,
-			Name:               topic.Name,
-			TopicID:            zeroUUID,
+			ErrorCode:          protocol.ErrorNone,
+			Name:               topicMeta.Name,
+			TopicID:            topicMeta.TopicID,
 			IsInternal:         false,
-			Partitions:         []protocol.PartitionResponse{}, // Empty for unknown topic
-			TopicAuthorizedOps: -2147483648,                    // Default value
+			Partitions:         partitionResponses,
+			TopicAuthorizedOps: -2147483648,
 		}
 		topics = append(topics, topicResp)
 	}
