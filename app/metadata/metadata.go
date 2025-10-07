@@ -347,13 +347,13 @@ func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 		offset++ // Skip TAG_BUFFER byte
 	}
 
-	// Read topic name (COMPACT_STRING)
-	nameLen, n := readVarint(data[offset:])
+	// Read topic name (COMPACT_STRING - uses unsigned varint)
+	nameLen, n := readUvarint(data[offset:])
 	if n <= 0 {
 		return fmt.Errorf("failed to read name length")
 	}
 	offset += n
-	nameLen-- // Compact string encoding
+	nameLen-- // Compact string encoding: length = N + 1
 
 	fmt.Printf("Topic name length: %d (after decoding), offset: %d\n", nameLen, offset)
 
@@ -411,13 +411,13 @@ func (cm *ClusterMetadata) parsePartitionRecord(data []byte) error {
 	copy(topicID[:], data[offset:offset+16])
 	offset += 16
 
-	// Read replicas (COMPACT_ARRAY)
-	replicasLen, n := readVarint(data[offset:])
+	// Read replicas (COMPACT_ARRAY - uses unsigned varint)
+	replicasLen, n := readUvarint(data[offset:])
 	if n <= 0 {
 		return fmt.Errorf("failed to read replicas length")
 	}
 	offset += n
-	replicasLen-- // Compact array encoding
+	replicasLen-- // Compact array encoding: length = N + 1
 
 	replicas := make([]int32, replicasLen)
 	for i := 0; i < replicasLen; i++ {
@@ -428,13 +428,13 @@ func (cm *ClusterMetadata) parsePartitionRecord(data []byte) error {
 		offset += 4
 	}
 
-	// Read ISR (COMPACT_ARRAY)
-	isrLen, n := readVarint(data[offset:])
+	// Read ISR (COMPACT_ARRAY - uses unsigned varint)
+	isrLen, n := readUvarint(data[offset:])
 	if n <= 0 {
 		return fmt.Errorf("failed to read ISR length")
 	}
 	offset += n
-	isrLen-- // Compact array encoding
+	isrLen-- // Compact array encoding: length = N + 1
 
 	isr := make([]int32, isrLen)
 	for i := 0; i < isrLen; i++ {
@@ -445,22 +445,22 @@ func (cm *ClusterMetadata) parsePartitionRecord(data []byte) error {
 		offset += 4
 	}
 
-	// Skip removing replicas (COMPACT_ARRAY)
-	removingLen, n := readVarint(data[offset:])
+	// Skip removing replicas (COMPACT_ARRAY - uses unsigned varint)
+	removingLen, n := readUvarint(data[offset:])
 	if n <= 0 {
 		return fmt.Errorf("failed to read removing replicas length")
 	}
 	offset += n
-	removingLen-- // Compact array encoding
+	removingLen-- // Compact array encoding: length = N + 1
 	offset += removingLen * 4
 
-	// Skip adding replicas (COMPACT_ARRAY)
-	addingLen, n := readVarint(data[offset:])
+	// Skip adding replicas (COMPACT_ARRAY - uses unsigned varint)
+	addingLen, n := readUvarint(data[offset:])
 	if n <= 0 {
 		return fmt.Errorf("failed to read adding replicas length")
 	}
 	offset += n
-	addingLen-- // Compact array encoding
+	addingLen-- // Compact array encoding: length = N + 1
 	offset += addingLen * 4
 
 	// Read leader (int32)
@@ -496,5 +496,10 @@ func (cm *ClusterMetadata) parsePartitionRecord(data []byte) error {
 
 func readVarint(data []byte) (int, int) {
 	v, n := binary.Varint(data)
+	return int(v), n
+}
+
+func readUvarint(data []byte) (int, int) {
+	v, n := binary.Uvarint(data)
 	return int(v), n
 }
