@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"log"
+	"sort"
 
 	"github.com/codecrafters-io/kafka-starter-go/app/metadata"
 	"github.com/codecrafters-io/kafka-starter-go/app/protocol"
@@ -24,9 +25,7 @@ func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody [
 
 	// Build response for each requested topic
 	var topics []protocol.TopicResponse
-	log.Printf("Processing %d requested topics", len(req.Topics))
-	for i, topic := range req.Topics {
-		log.Printf("  Topic %d: %s", i, topic.Name)
+	for _, topic := range req.Topics {
 		// Check if topic exists in metadata
 		topicMeta, exists := clusterMetadata.Topics[topic.Name]
 
@@ -74,6 +73,11 @@ func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody [
 		}
 		topics = append(topics, topicResp)
 	}
+
+	// Sort topics alphabetically by name as required by the spec
+	sort.Slice(topics, func(i, j int) bool {
+		return topics[i].Name < topics[j].Name
+	})
 
 	response := &protocol.DescribeTopicPartitionsResponse{
 		ThrottleTimeMs: 0,
