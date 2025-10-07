@@ -153,7 +153,7 @@ type TopicRequest struct {
 
 // ParseDescribeTopicPartitionsRequest parses a DescribeTopicPartitions v0 request
 func ParseDescribeTopicPartitionsRequest(data []byte) (*DescribeTopicPartitionsRequest, error) {
-	if len(data) < 1 {
+	if len(data) < 3 {
 		return nil, fmt.Errorf("request data too short")
 	}
 
@@ -163,17 +163,20 @@ func ParseDescribeTopicPartitionsRequest(data []byte) (*DescribeTopicPartitionsR
 
 	offset := 0
 
-	// Skip client_id (COMPACT_NULLABLE_STRING)
-	if offset >= len(data) {
-		return nil, fmt.Errorf("unexpected end of data reading client_id")
+	// Skip client_id (NULLABLE_STRING - not compact format)
+	// Read 2-byte length (INT16)
+	if offset+2 > len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading client_id length")
 	}
-	clientIDLen := int(data[offset])
-	offset++
+	clientIDLen := int(binary.BigEndian.Uint16(data[offset : offset+2]))
+	offset += 2
+
+	// Skip client_id string content (if clientIDLen is -1, it's null)
 	if clientIDLen > 0 {
-		offset += clientIDLen - 1 // -1 because compact encoding adds 1
+		offset += clientIDLen
 	}
 
-	// Skip TAG_BUFFER for request header
+	// Skip TAG_BUFFER for request header (for flexible versions)
 	if offset >= len(data) {
 		return nil, fmt.Errorf("unexpected end of data reading header tag buffer")
 	}
@@ -208,6 +211,9 @@ func ParseDescribeTopicPartitionsRequest(data []byte) (*DescribeTopicPartitionsR
 		}
 		offset++ // TAG_BUFFER
 	}
+
+	// Note: ResponsePartitionLimit and Cursor fields are also present but we don't need them
+	// for responding with unknown topic error
 
 	return req, nil
 }
