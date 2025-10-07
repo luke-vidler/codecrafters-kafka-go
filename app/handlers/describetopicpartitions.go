@@ -8,8 +8,6 @@ import (
 
 // HandleDescribeTopicPartitions handles the DescribeTopicPartitions API request
 func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody []byte) []byte {
-	log.Printf("Request body length: %d, hex: %x", len(requestBody), requestBody)
-
 	// Parse the request
 	req, err := protocol.ParseDescribeTopicPartitionsRequest(requestBody)
 	if err != nil {
@@ -47,9 +45,5 @@ func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody [
 		Cursor:         -1, // Null cursor
 	}
 
-	log.Printf("Response has %d topics", len(response.Topics))
-	encoded := response.Encode()
-	log.Printf("Encoded response length: %d, hex: %x", len(encoded), encoded)
-
-	return encoded
+	return response.Encode()
 }
