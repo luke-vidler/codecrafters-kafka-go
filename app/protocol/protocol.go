@@ -189,13 +189,13 @@ func ParseDescribeTopicPartitionsRequest(data []byte) (*DescribeTopicPartitionsR
 	for i := 0; i < topicsLen; i++ {
 		// Read topic name (COMPACT_STRING)
 		if offset >= len(data) {
-			return nil, fmt.Errorf("unexpected end of data reading topic name length")
+			return nil, fmt.Errorf("unexpected end of data reading topic name length at offset %d, data len %d", offset, len(data))
 		}
 		nameLen := int(data[offset]) - 1 // Compact string: actual length + 1
 		offset++
 
 		if offset+nameLen > len(data) {
-			return nil, fmt.Errorf("unexpected end of data reading topic name")
+			return nil, fmt.Errorf("unexpected end of data reading topic name: nameLen=%d, offset=%d, data len=%d", nameLen, offset, len(data))
 		}
 		topicName := string(data[offset : offset+nameLen])
 		offset += nameLen
