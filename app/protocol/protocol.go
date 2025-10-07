@@ -83,41 +83,31 @@ func (r *APIVersionsResponse) Encode() []byte {
 	var body []byte
 
 	// error_code (INT16)
-	errCode := make([]byte, 2)
-	binary.BigEndian.PutUint16(errCode, uint16(r.ErrorCode))
-	body = append(body, errCode...)
+	body = append(body, EncodeInt16(r.ErrorCode)...)
 
 	// api_keys array length (COMPACT_ARRAY format: actual length + 1)
-	body = append(body, byte(len(r.APIKeys)+1))
+	body = append(body, EncodeCompactArrayLength(len(r.APIKeys)))
 
 	// API key entries
 	for _, apiKey := range r.APIKeys {
 		// api_key (INT16)
-		key := make([]byte, 2)
-		binary.BigEndian.PutUint16(key, uint16(apiKey.APIKey))
-		body = append(body, key...)
+		body = append(body, EncodeInt16(apiKey.APIKey)...)
 
 		// min_version (INT16)
-		minVer := make([]byte, 2)
-		binary.BigEndian.PutUint16(minVer, uint16(apiKey.MinVersion))
-		body = append(body, minVer...)
+		body = append(body, EncodeInt16(apiKey.MinVersion)...)
 
 		// max_version (INT16)
-		maxVer := make([]byte, 2)
-		binary.BigEndian.PutUint16(maxVer, uint16(apiKey.MaxVersion))
-		body = append(body, maxVer...)
+		body = append(body, EncodeInt16(apiKey.MaxVersion)...)
 
 		// TAG_BUFFER (empty)
-		body = append(body, 0x00)
+		body = append(body, EncodeTagBuffer()...)
 	}
 
 	// throttle_time_ms (INT32)
-	throttle := make([]byte, 4)
-	binary.BigEndian.PutUint32(throttle, uint32(r.ThrottleTimeMs))
-	body = append(body, throttle...)
+	body = append(body, EncodeInt32(r.ThrottleTimeMs)...)
 
 	// TAG_BUFFER (empty)
-	body = append(body, 0x00)
+	body = append(body, EncodeTagBuffer()...)
 
 	return body
 }
@@ -341,22 +331,16 @@ func (r *FetchResponse) Encode() []byte {
 	var body []byte
 
 	// throttle_time_ms (INT32)
-	throttle := make([]byte, 4)
-	binary.BigEndian.PutUint32(throttle, uint32(r.ThrottleTimeMs))
-	body = append(body, throttle...)
+	body = append(body, EncodeInt32(r.ThrottleTimeMs)...)
 
 	// error_code (INT16)
-	errCode := make([]byte, 2)
-	binary.BigEndian.PutUint16(errCode, uint16(r.ErrorCode))
-	body = append(body, errCode...)
+	body = append(body, EncodeInt16(r.ErrorCode)...)
 
 	// session_id (INT32)
-	sessionID := make([]byte, 4)
-	binary.BigEndian.PutUint32(sessionID, uint32(r.SessionID))
-	body = append(body, sessionID...)
+	body = append(body, EncodeInt32(r.SessionID)...)
 
 	// responses (COMPACT_ARRAY)
-	body = append(body, byte(len(r.Responses)+1))
+	body = append(body, EncodeCompactArrayLength(len(r.Responses)))
 
 	for _, topicResp := range r.Responses {
 		// topic_id (UUID - 16 bytes)
@@ -367,79 +351,50 @@ func (r *FetchResponse) Encode() []byte {
 
 		for _, partResp := range topicResp.Partitions {
 			// partition_index (INT32)
-			partIndex := make([]byte, 4)
-			binary.BigEndian.PutUint32(partIndex, uint32(partResp.PartitionIndex))
-			body = append(body, partIndex...)
+			body = append(body, EncodeInt32(partResp.PartitionIndex)...)
 
 			// error_code (INT16)
-			partErrCode := make([]byte, 2)
-			binary.BigEndian.PutUint16(partErrCode, uint16(partResp.ErrorCode))
-			body = append(body, partErrCode...)
+			body = append(body, EncodeInt16(partResp.ErrorCode)...)
 
 			// high_watermark (INT64)
-			highWatermark := make([]byte, 8)
-			binary.BigEndian.PutUint64(highWatermark, uint64(partResp.HighWatermark))
-			body = append(body, highWatermark...)
+			body = append(body, EncodeInt64(partResp.HighWatermark)...)
 
 			// last_stable_offset (INT64)
-			lastStableOffset := make([]byte, 8)
-			binary.BigEndian.PutUint64(lastStableOffset, uint64(partResp.LastStableOffset))
-			body = append(body, lastStableOffset...)
+			body = append(body, EncodeInt64(partResp.LastStableOffset)...)
 
 			// log_start_offset (INT64)
-			logStartOffset := make([]byte, 8)
-			binary.BigEndian.PutUint64(logStartOffset, uint64(partResp.LogStartOffset))
-			body = append(body, logStartOffset...)
+			body = append(body, EncodeInt64(partResp.LogStartOffset)...)
 
 			// aborted_transactions (COMPACT_ARRAY)
-			body = append(body, byte(len(partResp.AbortedTransactions)+1))
+			body = append(body, EncodeCompactArrayLength(len(partResp.AbortedTransactions)))
 
 			for _, aborted := range partResp.AbortedTransactions {
 				// producer_id (INT64)
-				producerID := make([]byte, 8)
-				binary.BigEndian.PutUint64(producerID, uint64(aborted.ProducerID))
-				body = append(body, producerID...)
+				body = append(body, EncodeInt64(aborted.ProducerID)...)
 
 				// first_offset (INT64)
-				firstOffset := make([]byte, 8)
-				binary.BigEndian.PutUint64(firstOffset, uint64(aborted.FirstOffset))
-				body = append(body, firstOffset...)
+				body = append(body, EncodeInt64(aborted.FirstOffset)...)
 
 				// TAG_BUFFER (empty)
-				body = append(body, 0x00)
+				body = append(body, EncodeTagBuffer()...)
 			}
 
 			// preferred_read_replica (INT32)
-			preferredReplica := make([]byte, 4)
-			binary.BigEndian.PutUint32(preferredReplica, uint32(partResp.PreferredReadReplica))
-			body = append(body, preferredReplica...)
+			body = append(body, EncodeInt32(partResp.PreferredReadReplica)...)
 
 			// records (COMPACT_BYTES)
-			// For COMPACT_BYTES: length is encoded as unsigned varint (length + 1)
-			// 0 means null, otherwise length N is encoded as N+1
-			if len(partResp.Records) == 0 {
-				body = append(body, 0x00) // Null/empty records
-			} else {
-				// Encode length as unsigned varint (length + 1)
-				recordsLen := len(partResp.Records) + 1
-				lenBuf := make([]byte, binary.MaxVarintLen64)
-				n := binary.PutUvarint(lenBuf, uint64(recordsLen))
-				body = append(body, lenBuf[:n]...)
-
-				// Append the actual records
-				body = append(body, partResp.Records...)
-			}
+			body = append(body, EncodeCompactBytes(partResp.Records)...)
 
 			// TAG_BUFFER (empty)
-			body = append(body, 0x00)
+			body = append(body, EncodeTagBuffer()...)
 		}
 
 		// TAG_BUFFER (empty) for topic
-		body = append(body, 0x00)
+		body = append(body, EncodeTagBuffer()...)
 	}
 
 	// TAG_BUFFER (empty) for response
-	body = append(body, 0x00)
+	body = append(body, EncodeTagBuffer()...)
 
 	return body
 }
@@ -556,18 +511,14 @@ func (r *DescribeTopicPartitionsResponse) Encode() []byte {
 	var body []byte
 
 	// throttle_time_ms (INT32)
-	throttle := make([]byte, 4)
-	binary.BigEndian.PutUint32(throttle, uint32(r.ThrottleTimeMs))
-	body = append(body, throttle...)
+	body = append(body, EncodeInt32(r.ThrottleTimeMs)...)
 
 	// topics array (COMPACT_ARRAY)
-	body = append(body, byte(len(r.Topics)+1))
+	body = append(body, EncodeCompactArrayLength(len(r.Topics)))
 
 	for _, topic := range r.Topics {
 		// error_code (INT16)
-		errCode := make([]byte, 2)
-		binary.BigEndian.PutUint16(errCode, uint16(topic.ErrorCode))
-		body = append(body, errCode...)
+		body = append(body, EncodeInt16(topic.ErrorCode)...)
 
 		// name (COMPACT_STRING)
 		body = append(body, byte(len(topic.Name)+1))
@@ -584,80 +535,60 @@ func (r *DescribeTopicPartitionsResponse) Encode() []byte {
 		}
 
 		// partitions (COMPACT_ARRAY)
-		body = append(body, byte(len(topic.Partitions)+1))
+		body = append(body, EncodeCompactArrayLength(len(topic.Partitions)))
 
 		for _, partition := range topic.Partitions {
 			// error_code (INT16)
-			partErrCode := make([]byte, 2)
-			binary.BigEndian.PutUint16(partErrCode, uint16(partition.ErrorCode))
-			body = append(body, partErrCode...)
+			body = append(body, EncodeInt16(partition.ErrorCode)...)
 
 			// partition_index (INT32)
-			partIndex := make([]byte, 4)
-			binary.BigEndian.PutUint32(partIndex, uint32(partition.PartitionIndex))
-			body = append(body, partIndex...)
+			body = append(body, EncodeInt32(partition.PartitionIndex)...)
 
 			// leader_id (INT32)
-			leaderID := make([]byte, 4)
-			binary.BigEndian.PutUint32(leaderID, uint32(partition.LeaderID))
-			body = append(body, leaderID...)
+			body = append(body, EncodeInt32(partition.LeaderID)...)
 
 			// leader_epoch (INT32)
-			leaderEpoch := make([]byte, 4)
-			binary.BigEndian.PutUint32(leaderEpoch, uint32(partition.LeaderEpoch))
-			body = append(body, leaderEpoch...)
+			body = append(body, EncodeInt32(partition.LeaderEpoch)...)
 
 			// replica_nodes (COMPACT_ARRAY)
-			body = append(body, byte(len(partition.ReplicaNodes)+1))
+			body = append(body, EncodeCompactArrayLength(len(partition.ReplicaNodes)))
 			for _, node := range partition.ReplicaNodes {
-				nodeID := make([]byte, 4)
-				binary.BigEndian.PutUint32(nodeID, uint32(node))
-				body = append(body, nodeID...)
+				body = append(body, EncodeInt32(node)...)
 			}
 
 			// isr_nodes (COMPACT_ARRAY)
-			body = append(body, byte(len(partition.IsrNodes)+1))
+			body = append(body, EncodeCompactArrayLength(len(partition.IsrNodes)))
 			for _, node := range partition.IsrNodes {
-				nodeID := make([]byte, 4)
-				binary.BigEndian.PutUint32(nodeID, uint32(node))
-				body = append(body, nodeID...)
+				body = append(body, EncodeInt32(node)...)
 			}
 
 			// eligible_leader_replicas (COMPACT_ARRAY)
-			body = append(body, byte(len(partition.EligibleLeaders)+1))
+			body = append(body, EncodeCompactArrayLength(len(partition.EligibleLeaders)))
 			for _, node := range partition.EligibleLeaders {
-				nodeID := make([]byte, 4)
-				binary.BigEndian.PutUint32(nodeID, uint32(node))
-				body = append(body, nodeID...)
+				body = append(body, EncodeInt32(node)...)
 			}
 
 			// last_known_elr (COMPACT_ARRAY)
-			body = append(body, byte(len(partition.LastKnownELR)+1))
+			body = append(body, EncodeCompactArrayLength(len(partition.LastKnownELR)))
 			for _, node := range partition.LastKnownELR {
-				nodeID := make([]byte, 4)
-				binary.BigEndian.PutUint32(nodeID, uint32(node))
-				body = append(body, nodeID...)
+				body = append(body, EncodeInt32(node)...)
 			}
 
 			// offline_replicas (COMPACT_ARRAY)
-			body = append(body, byte(len(partition.OfflineReplicas)+1))
+			body = append(body, EncodeCompactArrayLength(len(partition.OfflineReplicas)))
 			for _, node := range partition.OfflineReplicas {
-				nodeID := make([]byte, 4)
-				binary.BigEndian.PutUint32(nodeID, uint32(node))
-				body = append(body, nodeID...)
+				body = append(body, EncodeInt32(node)...)
 			}
 
 			// TAG_BUFFER (empty)
-			body = append(body, 0x00)
+			body = append(body, EncodeTagBuffer()...)
 		}
 
 		// topic_authorized_operations (INT32)
-		authOps := make([]byte, 4)
-		binary.BigEndian.PutUint32(authOps, uint32(topic.TopicAuthorizedOps))
-		body = append(body, authOps...)
+		body = append(body, EncodeInt32(topic.TopicAuthorizedOps)...)
 
 		// TAG_BUFFER (empty)
-		body = append(body, 0x00)
+		body = append(body, EncodeTagBuffer()...)
 	}
 
 	// next_cursor (INT8 for null, or more complex for actual cursor)
@@ -665,7 +596,7 @@ func (r *DescribeTopicPartitionsResponse) Encode() []byte {
 	body = append(body, byte(r.Cursor))
 
 	// TAG_BUFFER (empty)
-	body = append(body, 0x00)
+	body = append(body, EncodeTagBuffer()...)
 
 	return body
 }
