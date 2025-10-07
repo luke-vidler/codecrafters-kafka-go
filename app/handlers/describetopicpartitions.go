@@ -47,5 +47,9 @@ func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody [
 		Cursor:         -1, // Null cursor
 	}
 
-	return response.Encode()
+	log.Printf("Response has %d topics", len(response.Topics))
+	encoded := response.Encode()
+	log.Printf("Encoded response length: %d, hex: %x", len(encoded), encoded)
+
+	return encoded
 }
