@@ -166,6 +166,135 @@ func WriteFlexibleResponse(w io.Writer, correlationID int32, body []byte) error 
 	return err
 }
 
+// FetchResponse represents a Fetch API response
+type FetchResponse struct {
+	ThrottleTimeMs int32
+	ErrorCode      int16
+	SessionID      int32
+	Responses      []FetchTopicResponse
+}
+
+// FetchTopicResponse represents a topic in the Fetch response
+type FetchTopicResponse struct {
+	TopicID    [16]byte // UUID
+	Partitions []FetchPartitionResponse
+}
+
+// FetchPartitionResponse represents a partition in the Fetch response
+type FetchPartitionResponse struct {
+	PartitionIndex       int32
+	ErrorCode            int16
+	HighWatermark        int64
+	LastStableOffset     int64
+	LogStartOffset       int64
+	AbortedTransactions  []AbortedTransaction
+	PreferredReadReplica int32
+	Records              []byte // COMPACT_RECORDS
+}
+
+// AbortedTransaction represents an aborted transaction
+type AbortedTransaction struct {
+	ProducerID  int64
+	FirstOffset int64
+}
+
+// Encode encodes the Fetch response to bytes
+func (r *FetchResponse) Encode() []byte {
+	var body []byte
+
+	// throttle_time_ms (INT32)
+	throttle := make([]byte, 4)
+	binary.BigEndian.PutUint32(throttle, uint32(r.ThrottleTimeMs))
+	body = append(body, throttle...)
+
+	// error_code (INT16)
+	errCode := make([]byte, 2)
+	binary.BigEndian.PutUint16(errCode, uint16(r.ErrorCode))
+	body = append(body, errCode...)
+
+	// session_id (INT32)
+	sessionID := make([]byte, 4)
+	binary.BigEndian.PutUint32(sessionID, uint32(r.SessionID))
+	body = append(body, sessionID...)
+
+	// responses (COMPACT_ARRAY)
+	body = append(body, byte(len(r.Responses)+1))
+
+	for _, topicResp := range r.Responses {
+		// topic_id (UUID - 16 bytes)
+		body = append(body, topicResp.TopicID[:]...)
+
+		// partitions (COMPACT_ARRAY)
+		body = append(body, byte(len(topicResp.Partitions)+1))
+
+		for _, partResp := range topicResp.Partitions {
+			// partition_index (INT32)
+			partIndex := make([]byte, 4)
+			binary.BigEndian.PutUint32(partIndex, uint32(partResp.PartitionIndex))
+			body = append(body, partIndex...)
+
+			// error_code (INT16)
+			partErrCode := make([]byte, 2)
+			binary.BigEndian.PutUint16(partErrCode, uint16(partResp.ErrorCode))
+			body = append(body, partErrCode...)
+
+			// high_watermark (INT64)
+			highWatermark := make([]byte, 8)
+			binary.BigEndian.PutUint64(highWatermark, uint64(partResp.HighWatermark))
+			body = append(body, highWatermark...)
+
+			// last_stable_offset (INT64)
+			lastStableOffset := make([]byte, 8)
+			binary.BigEndian.PutUint64(lastStableOffset, uint64(partResp.LastStableOffset))
+			body = append(body, lastStableOffset...)
+
+			// log_start_offset (INT64)
+			logStartOffset := make([]byte, 8)
+			binary.BigEndian.PutUint64(logStartOffset, uint64(partResp.LogStartOffset))
+			body = append(body, logStartOffset...)
+
+			// aborted_transactions (COMPACT_ARRAY)
+			body = append(body, byte(len(partResp.AbortedTransactions)+1))
+
+			for _, aborted := range partResp.AbortedTransactions {
+				// producer_id (INT64)
+				producerID := make([]byte, 8)
+				binary.BigEndian.PutUint64(producerID, uint64(aborted.ProducerID))
+				body = append(body, producerID...)
+
+				// first_offset (INT64)
+				firstOffset := make([]byte, 8)
+				binary.BigEndian.PutUint64(firstOffset, uint64(aborted.FirstOffset))
+				body = append(body, firstOffset...)
+
+				// TAG_BUFFER (empty)
+				body = append(body, 0x00)
+			}
+
+			// preferred_read_replica (INT32)
+			preferredReplica := make([]byte, 4)
+			binary.BigEndian.PutUint32(preferredReplica, uint32(partResp.PreferredReadReplica))
+			body = append(body, preferredReplica...)
+
+			// records (COMPACT_RECORDS)
+			// For empty records, we use COMPACT_BYTES format
+			// Length is encoded as varint, -1 means null
+			body = append(body, 0x00) // Length 0 (empty records)
+
+			// TAG_BUFFER (empty)
+			body = append(body, 0x00)
+		}
+
+		// TAG_BUFFER (empty) for topic
+		body = append(body, 0x00)
+	}
+
+	// TAG_BUFFER (empty) for response
+	body = append(body, 0x00)
+
+	return body
+}
+
 // DescribeTopicPartitionsRequest represents a DescribeTopicPartitions request
 type DescribeTopicPartitionsRequest struct {
 	Topics []TopicRequest
