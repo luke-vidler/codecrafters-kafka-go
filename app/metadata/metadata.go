@@ -284,23 +284,28 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 		offset += int(headerValueLen) // Skip header value
 	}
 
-	// Now parse the actual record if we have a key
-	if key != nil && len(key) > 0 {
-		recordType := parseRecordType(key)
-		fmt.Printf("Record type: %d\n", recordType)
+	// Parse the actual record from the value
+	// For metadata records, the key is typically null and the record type is in the value
+	if value != nil && len(value) > 0 {
+		recordType := parseRecordTypeFromValue(value)
+		fmt.Printf("Record type from value: %d\n", recordType)
 
-		if value != nil && len(value) > 0 {
-			// Parse based on record type
-			switch recordType {
-			case 2: // TopicRecord
-				fmt.Printf("Parsing TopicRecord...\n")
-				cm.parseTopicRecord(value)
-			case 3: // PartitionRecord
-				fmt.Printf("Parsing PartitionRecord...\n")
-				cm.parsePartitionRecord(value)
-			default:
-				fmt.Printf("Unknown record type: %d\n", recordType)
+		// Parse based on record type
+		switch recordType {
+		case 2: // TopicRecord
+			fmt.Printf("Parsing TopicRecord...\n")
+			// Skip frame version and record type bytes
+			if len(value) > 2 {
+				cm.parseTopicRecord(value[2:])
 			}
+		case 3: // PartitionRecord
+			fmt.Printf("Parsing PartitionRecord...\n")
+			// Skip frame version and record type bytes
+			if len(value) > 2 {
+				cm.parsePartitionRecord(value[2:])
+			}
+		default:
+			fmt.Printf("Unknown or unsupported record type: %d\n", recordType)
 		}
 	}
 
@@ -320,6 +325,14 @@ func parseRecordType(key []byte) int8 {
 		if len(key) > 1 {
 			return int8(key[1])
 		}
+	}
+	return -1
+}
+
+func parseRecordTypeFromValue(value []byte) int8 {
+	if len(value) >= 2 {
+		// First byte is the frame version, second byte is the record type
+		return int8(value[1])
 	}
 	return -1
 }
