@@ -24,7 +24,9 @@ func HandleDescribeTopicPartitions(header *protocol.RequestHeader, requestBody [
 
 	// Build response for each requested topic
 	var topics []protocol.TopicResponse
-	for _, topic := range req.Topics {
+	log.Printf("Processing %d requested topics", len(req.Topics))
+	for i, topic := range req.Topics {
+		log.Printf("  Topic %d: %s", i, topic.Name)
 		// Check if topic exists in metadata
 		topicMeta, exists := clusterMetadata.Topics[topic.Name]
 
