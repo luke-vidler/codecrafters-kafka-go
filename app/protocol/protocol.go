@@ -414,10 +414,21 @@ func (r *FetchResponse) Encode() []byte {
 			binary.BigEndian.PutUint32(preferredReplica, uint32(partResp.PreferredReadReplica))
 			body = append(body, preferredReplica...)
 
-			// records (COMPACT_RECORDS)
-			// For empty records, we use COMPACT_BYTES format
-			// Length is encoded as varint, -1 means null
-			body = append(body, 0x00) // Length 0 (empty records)
+			// records (COMPACT_BYTES)
+			// For COMPACT_BYTES: length is encoded as unsigned varint (length + 1)
+			// 0 means null, otherwise length N is encoded as N+1
+			if len(partResp.Records) == 0 {
+				body = append(body, 0x00) // Null/empty records
+			} else {
+				// Encode length as unsigned varint (length + 1)
+				recordsLen := len(partResp.Records) + 1
+				lenBuf := make([]byte, binary.MaxVarintLen64)
+				n := binary.PutUvarint(lenBuf, uint64(recordsLen))
+				body = append(body, lenBuf[:n]...)
+
+				// Append the actual records
+				body = append(body, partResp.Records...)
+			}
 
 			// TAG_BUFFER (empty)
 			body = append(body, 0x00)

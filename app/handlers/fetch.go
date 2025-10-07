@@ -73,16 +73,30 @@ func HandleFetch(header *protocol.RequestHeader, requestBody []byte, clusterMeta
 					}
 					partitionResponses = append(partitionResponses, partResp)
 				} else {
-					// Partition exists - return empty records (for now)
+					// Partition exists - read records from disk
+					records, err := metadata.ReadPartitionLog(topicMeta.Name, partReq.PartitionIndex)
+					if err != nil {
+						log.Printf("Error reading partition log: %v", err)
+						// Return empty records on error
+						records = []byte{}
+					}
+
+					// Calculate high watermark (end of log)
+					// For simplicity, we'll use the size of records as an indicator
+					highWatermark := int64(1) // At least one message
+					if len(records) == 0 {
+						highWatermark = 0
+					}
+
 					partResp := protocol.FetchPartitionResponse{
 						PartitionIndex:       partReq.PartitionIndex,
 						ErrorCode:            protocol.ErrorNone,
-						HighWatermark:        0, // Empty topic
-						LastStableOffset:     0,
+						HighWatermark:        highWatermark,
+						LastStableOffset:     highWatermark,
 						LogStartOffset:       0,
 						AbortedTransactions:  []protocol.AbortedTransaction{},
 						PreferredReadReplica: -1,
-						Records:              []byte{},
+						Records:              records,
 					}
 					partitionResponses = append(partitionResponses, partResp)
 				}

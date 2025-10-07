@@ -466,3 +466,15 @@ func readUvarint(data []byte) (int, int) {
 	v, n := binary.Uvarint(data)
 	return int(v), n
 }
+
+// ReadPartitionLog reads the log file for a topic partition and returns the raw bytes
+func ReadPartitionLog(topicName string, partitionID int32) ([]byte, error) {
+	logPath := fmt.Sprintf("/tmp/kraft-combined-logs/%s-%d/00000000000000000000.log", topicName, partitionID)
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read log file: %w", err)
+	}
+
+	return data, nil
+}
