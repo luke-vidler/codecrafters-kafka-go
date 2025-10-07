@@ -22,6 +22,11 @@ func HandleAPIVersions(header *protocol.RequestHeader) []byte {
 		ErrorCode: protocol.ErrorNone,
 		APIKeys: []protocol.APIVersion{
 			{
+				APIKey:     protocol.APIKeyFetch,
+				MinVersion: 0,
+				MaxVersion: 16,
+			},
+			{
 				APIKey:     protocol.APIKeyAPIVersions,
 				MinVersion: 0,
 				MaxVersion: 4,

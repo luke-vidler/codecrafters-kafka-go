@@ -8,6 +8,7 @@ import (
 
 // API Keys
 const (
+	APIKeyFetch                   = 1
 	APIKeyAPIVersions             = 18
 	APIKeyDescribeTopicPartitions = 75
 )
