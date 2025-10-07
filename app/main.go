@@ -73,20 +73,44 @@ func handleConnection(conn net.Conn) {
 				0x00, // TAG_BUFFER: 0 (empty)
 			}
 		} else {
-			// ApiVersions response format (response header v0 + body):
+			// ApiVersions response format (response header v0 + body for v4):
 			// - error_code (INT16): 0 for success
-			// - num_api_keys (COMPACT_ARRAY length): number of API keys + 1
-			// - api_keys: array of supported API keys
+			// - api_keys (COMPACT_ARRAY): array of supported API keys
+			//   Each entry contains:
+			//   - api_key (INT16): The API key
+			//   - min_version (INT16): Minimum supported version
+			//   - max_version (INT16): Maximum supported version
+			//   - TAG_BUFFER (COMPACT_ARRAY): empty (0x00)
 			// - throttle_time_ms (INT32): 0
 			// - TAG_BUFFER (COMPACT_ARRAY): 0 (empty)
 
-			// Return error_code=0 with empty array
-			responseBody = []byte{
-				0x00, 0x00, // error_code: 0 (no error)
-				0x01,                   // num_api_keys: 0 (COMPACT_ARRAY length, 0 + 1)
-				0x00, 0x00, 0x00, 0x00, // throttle_time_ms: 0
-				0x00, // TAG_BUFFER: 0 (empty)
-			}
+			// Build response with ApiVersions (key 18) entry
+			var body []byte
+
+			// error_code: 0 (INT16)
+			body = append(body, 0x00, 0x00)
+
+			// api_keys array length: 2 (COMPACT_ARRAY format: actual length + 1)
+			// We're returning 1 API key (ApiVersions with key 18)
+			body = append(body, 0x02)
+
+			// API key entry 1: ApiVersions (key 18)
+			// api_key: 18 (INT16)
+			body = append(body, 0x00, 0x12)
+			// min_version: 0 (INT16)
+			body = append(body, 0x00, 0x00)
+			// max_version: 4 (INT16)
+			body = append(body, 0x00, 0x04)
+			// TAG_BUFFER: empty (COMPACT_ARRAY)
+			body = append(body, 0x00)
+
+			// throttle_time_ms: 0 (INT32)
+			body = append(body, 0x00, 0x00, 0x00, 0x00)
+
+			// TAG_BUFFER: empty (COMPACT_ARRAY)
+			body = append(body, 0x00)
+
+			responseBody = body
 		}
 	} else {
 		// For other APIs, return error
