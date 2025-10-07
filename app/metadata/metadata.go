@@ -59,17 +59,14 @@ func (cm *ClusterMetadata) LoadFromLog(logPath string) error {
 		}
 
 		batchCount++
-		fmt.Printf("Read batch %d: %d records\n", batchCount, batch.RecordCount)
 
 		// Parse records in the batch
 		if err := cm.parseRecords(batch); err != nil {
-			fmt.Printf("Error parsing records in batch %d: %v\n", batchCount, err)
 			// Continue to next batch instead of failing
 			continue
 		}
 	}
 
-	fmt.Printf("Total batches read: %d\n", batchCount)
 	return nil
 }
 
@@ -156,21 +153,15 @@ func (cm *ClusterMetadata) parseRecords(batch *RecordBatch) error {
 	data := batch.Records
 	offset := 0
 
-	fmt.Printf("Parsing batch with %d records, data len=%d\n", batch.RecordCount, len(data))
-
 	for i := int32(0); i < batch.RecordCount; i++ {
 		// Read record length (varint)
 		recordLen, n := binary.Varint(data[offset:])
 		if n <= 0 {
-			fmt.Printf("Failed to read record length at offset %d\n", offset)
 			return fmt.Errorf("failed to read record length")
 		}
 		offset += n
 
-		fmt.Printf("Record %d: length=%d, offset=%d\n", i, recordLen, offset)
-
 		if offset+int(recordLen) > len(data) {
-			fmt.Printf("Record length %d exceeds remaining data %d\n", recordLen, len(data)-offset)
 			return fmt.Errorf("record length exceeds data")
 		}
 
@@ -179,7 +170,6 @@ func (cm *ClusterMetadata) parseRecords(batch *RecordBatch) error {
 
 		// Parse the record
 		if err := cm.parseRecord(recordData); err != nil {
-			fmt.Printf("Error parsing record %d: %v\n", i, err)
 			// Continue on error to be lenient
 			continue
 		}
@@ -190,8 +180,6 @@ func (cm *ClusterMetadata) parseRecords(batch *RecordBatch) error {
 
 func (cm *ClusterMetadata) parseRecord(data []byte) error {
 	offset := 0
-
-	fmt.Printf("Parsing record, data len=%d, hex=%x\n", len(data), data[:min(len(data), 20)])
 
 	// Read attributes (int8)
 	// attributes := int8(data[offset])
@@ -218,20 +206,15 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 	}
 	offset += n
 
-	fmt.Printf("Key length: %d, offset now: %d\n", keyLen, offset)
-
 	// Read key (keyLen can be -1 for null)
-	var key []byte
 	if keyLen == -1 {
-		// Null key
-		fmt.Printf("Key is null\n")
+		// Null key - skip
 	} else if keyLen > 0 {
 		if offset+int(keyLen) > len(data) {
 			return fmt.Errorf("key length exceeds data")
 		}
-		key = data[offset : offset+int(keyLen)]
+		// Skip key data
 		offset += int(keyLen)
-		fmt.Printf("Key: %x\n", key)
 	}
 
 	// Read value length (varint)
@@ -241,13 +224,10 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 	}
 	offset += n
 
-	fmt.Printf("Value length: %d\n", valueLen)
-
 	// Read value
 	var value []byte
 	if valueLen == -1 {
 		// Null value
-		fmt.Printf("Value is null\n")
 	} else if valueLen > 0 {
 		if offset+int(valueLen) > len(data) {
 			return fmt.Errorf("value length exceeds data")
@@ -262,8 +242,6 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 		return fmt.Errorf("failed to read headers count")
 	}
 	offset += n
-
-	fmt.Printf("Headers count: %d\n", headersCount)
 
 	// Skip headers for now
 	for i := int64(0); i < headersCount; i++ {
@@ -288,24 +266,20 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 	// For metadata records, the key is typically null and the record type is in the value
 	if value != nil && len(value) > 0 {
 		recordType := parseRecordTypeFromValue(value)
-		fmt.Printf("Record type from value: %d\n", recordType)
 
 		// Parse based on record type
 		switch recordType {
 		case 2: // TopicRecord
-			fmt.Printf("Parsing TopicRecord...\n")
 			// Skip frame version and record type bytes
 			if len(value) > 2 {
 				cm.parseTopicRecord(value[2:])
 			}
 		case 3: // PartitionRecord
-			fmt.Printf("Parsing PartitionRecord...\n")
 			// Skip frame version and record type bytes
 			if len(value) > 2 {
 				cm.parsePartitionRecord(value[2:])
 			}
 		default:
-			fmt.Printf("Unknown or unsupported record type: %d\n", recordType)
 		}
 	}
 
@@ -340,8 +314,6 @@ func parseRecordTypeFromValue(value []byte) int8 {
 func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 	offset := 0
 
-	fmt.Printf("parseTopicRecord: data len=%d, hex=%x\n", len(data), data)
-
 	// Skip TAG_BUFFER at the beginning (for flexible versions)
 	if offset < len(data) {
 		offset++ // Skip TAG_BUFFER byte
@@ -355,15 +327,11 @@ func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 	offset += n
 	nameLen-- // Compact string encoding: length = N + 1
 
-	fmt.Printf("Topic name length: %d (after decoding), offset: %d\n", nameLen, offset)
-
 	if offset+nameLen > len(data) {
 		return fmt.Errorf("name length %d exceeds data: offset=%d, data len=%d", nameLen, offset, len(data))
 	}
 	name := string(data[offset : offset+nameLen])
 	offset += nameLen
-
-	fmt.Printf("Topic name: %s, offset now: %d\n", name, offset)
 
 	// Read topic ID (UUID - 16 bytes)
 	if offset+16 > len(data) {
@@ -380,14 +348,11 @@ func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 	cm.Topics[name] = topic
 	cm.TopicsByID[topicID] = topic
 
-	fmt.Printf("Parsed TopicRecord: name=%s, topicID=%x\n", name, topicID)
 	return nil
 }
 
 func (cm *ClusterMetadata) parsePartitionRecord(data []byte) error {
 	offset := 0
-
-	fmt.Printf("parsePartitionRecord: data len=%d, hex=%x\n", len(data), data[:min(len(data), 40)])
 
 	// Skip TAG_BUFFER at the beginning (for flexible versions)
 	if offset < len(data) {
@@ -400,8 +365,6 @@ func (cm *ClusterMetadata) parsePartitionRecord(data []byte) error {
 	}
 	partitionID := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
 	offset += 4
-
-	fmt.Printf("Partition ID: %d\n", partitionID)
 
 	// Read topic ID (UUID - 16 bytes)
 	if offset+16 > len(data) {
