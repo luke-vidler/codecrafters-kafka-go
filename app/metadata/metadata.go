@@ -342,6 +342,11 @@ func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 
 	fmt.Printf("parseTopicRecord: data len=%d, hex=%x\n", len(data), data)
 
+	// Skip TAG_BUFFER at the beginning (for flexible versions)
+	if offset < len(data) {
+		offset++ // Skip TAG_BUFFER byte
+	}
+
 	// Read topic name (COMPACT_STRING)
 	nameLen, n := readVarint(data[offset:])
 	if n <= 0 {
@@ -382,12 +387,21 @@ func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 func (cm *ClusterMetadata) parsePartitionRecord(data []byte) error {
 	offset := 0
 
+	fmt.Printf("parsePartitionRecord: data len=%d, hex=%x\n", len(data), data[:min(len(data), 40)])
+
+	// Skip TAG_BUFFER at the beginning (for flexible versions)
+	if offset < len(data) {
+		offset++ // Skip TAG_BUFFER byte
+	}
+
 	// Read partition ID (int32)
 	if offset+4 > len(data) {
 		return fmt.Errorf("not enough data for partition ID")
 	}
 	partitionID := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
 	offset += 4
+
+	fmt.Printf("Partition ID: %d\n", partitionID)
 
 	// Read topic ID (UUID - 16 bytes)
 	if offset+16 > len(data) {
