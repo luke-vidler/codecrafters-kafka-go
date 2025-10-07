@@ -220,36 +220,76 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 
 	fmt.Printf("Key length: %d, offset now: %d\n", keyLen, offset)
 
-	// Read key
-	if keyLen > 0 {
+	// Read key (keyLen can be -1 for null)
+	var key []byte
+	if keyLen == -1 {
+		// Null key
+		fmt.Printf("Key is null\n")
+	} else if keyLen > 0 {
 		if offset+int(keyLen) > len(data) {
 			return fmt.Errorf("key length exceeds data")
 		}
-		key := data[offset : offset+int(keyLen)]
+		key = data[offset : offset+int(keyLen)]
 		offset += int(keyLen)
-
 		fmt.Printf("Key: %x\n", key)
+	}
 
-		// Parse the key to get record type
+	// Read value length (varint)
+	valueLen, n := binary.Varint(data[offset:])
+	if n <= 0 {
+		return fmt.Errorf("failed to read value length")
+	}
+	offset += n
+
+	fmt.Printf("Value length: %d\n", valueLen)
+
+	// Read value
+	var value []byte
+	if valueLen == -1 {
+		// Null value
+		fmt.Printf("Value is null\n")
+	} else if valueLen > 0 {
+		if offset+int(valueLen) > len(data) {
+			return fmt.Errorf("value length exceeds data")
+		}
+		value = data[offset : offset+int(valueLen)]
+		offset += int(valueLen)
+	}
+
+	// Read headers count (varint)
+	headersCount, n := binary.Varint(data[offset:])
+	if n <= 0 {
+		return fmt.Errorf("failed to read headers count")
+	}
+	offset += n
+
+	fmt.Printf("Headers count: %d\n", headersCount)
+
+	// Skip headers for now
+	for i := int64(0); i < headersCount; i++ {
+		// Read header key length
+		headerKeyLen, n := binary.Varint(data[offset:])
+		if n <= 0 {
+			return fmt.Errorf("failed to read header key length")
+		}
+		offset += n
+		offset += int(headerKeyLen) // Skip header key
+
+		// Read header value length
+		headerValueLen, n := binary.Varint(data[offset:])
+		if n <= 0 {
+			return fmt.Errorf("failed to read header value length")
+		}
+		offset += n
+		offset += int(headerValueLen) // Skip header value
+	}
+
+	// Now parse the actual record if we have a key
+	if key != nil && len(key) > 0 {
 		recordType := parseRecordType(key)
 		fmt.Printf("Record type: %d\n", recordType)
 
-		// Read value length (varint)
-		valueLen, n := binary.Varint(data[offset:])
-		if n <= 0 {
-			return fmt.Errorf("failed to read value length")
-		}
-		offset += n
-
-		fmt.Printf("Value length: %d\n", valueLen)
-
-		// Read value
-		if valueLen > 0 {
-			if offset+int(valueLen) > len(data) {
-				return fmt.Errorf("value length exceeds data")
-			}
-			value := data[offset : offset+int(valueLen)]
-
+		if value != nil && len(value) > 0 {
 			// Parse based on record type
 			switch recordType {
 			case 2: // TopicRecord
