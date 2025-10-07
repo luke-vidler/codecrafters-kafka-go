@@ -141,6 +141,30 @@ func WriteResponse(w io.Writer, correlationID int32, body []byte) error {
 	return err
 }
 
+// WriteFlexibleResponse writes a flexible response with TAG_BUFFER in header
+func WriteFlexibleResponse(w io.Writer, correlationID int32, body []byte) error {
+	// Calculate total response size (correlation_id + TAG_BUFFER + body)
+	responseSize := 4 + 1 + len(body) // correlation_id (4) + TAG_BUFFER (1) + body
+
+	// Build full response
+	response := make([]byte, 4+responseSize)
+
+	// message_size
+	binary.BigEndian.PutUint32(response[0:4], uint32(responseSize))
+
+	// correlation_id
+	binary.BigEndian.PutUint32(response[4:8], uint32(correlationID))
+
+	// TAG_BUFFER (empty)
+	response[8] = 0x00
+
+	// response body
+	copy(response[9:], body)
+
+	_, err := w.Write(response)
+	return err
+}
+
 // DescribeTopicPartitionsRequest represents a DescribeTopicPartitions request
 type DescribeTopicPartitionsRequest struct {
 	Topics []TopicRequest

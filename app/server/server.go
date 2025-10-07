@@ -62,20 +62,30 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 		// Route to appropriate handler
 		var responseBody []byte
+		var useFlexibleResponse bool
 
 		switch header.APIKey {
 		case protocol.APIKeyAPIVersions:
 			responseBody = handlers.HandleAPIVersions(header)
+			useFlexibleResponse = false // APIVersions uses v0 response header
 		case protocol.APIKeyDescribeTopicPartitions:
 			responseBody = handlers.HandleDescribeTopicPartitions(header, requestBody)
+			useFlexibleResponse = true // DescribeTopicPartitions uses v1 response header (flexible)
 		default:
 			// Return UNSUPPORTED_VERSION for unknown API keys
 			responseBody = make([]byte, 2)
 			binary.BigEndian.PutUint16(responseBody, protocol.ErrorUnsupportedVersion)
+			useFlexibleResponse = false
 		}
 
 		// Write response
-		if err := protocol.WriteResponse(conn, header.CorrelationID, responseBody); err != nil {
+		var err error
+		if useFlexibleResponse {
+			err = protocol.WriteFlexibleResponse(conn, header.CorrelationID, responseBody)
+		} else {
+			err = protocol.WriteResponse(conn, header.CorrelationID, responseBody)
+		}
+		if err != nil {
 			log.Printf("Error writing response: %v", err)
 			return
 		}
