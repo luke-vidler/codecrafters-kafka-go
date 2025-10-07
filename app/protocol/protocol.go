@@ -18,6 +18,7 @@ const (
 	ErrorNone                    = 0
 	ErrorUnknownTopicOrPartition = 3
 	ErrorUnsupportedVersion      = 35
+	ErrorUnknownTopicID          = 100
 )
 
 // RequestHeader represents a Kafka request header (v2)
@@ -196,6 +197,143 @@ type FetchPartitionResponse struct {
 type AbortedTransaction struct {
 	ProducerID  int64
 	FirstOffset int64
+}
+
+// FetchRequest represents a Fetch API request
+type FetchRequest struct {
+	Topics []FetchTopicRequest
+}
+
+// FetchTopicRequest represents a topic in the Fetch request
+type FetchTopicRequest struct {
+	TopicID    [16]byte
+	Partitions []FetchPartitionRequest
+}
+
+// FetchPartitionRequest represents a partition in the Fetch request
+type FetchPartitionRequest struct {
+	PartitionIndex int32
+	// Other fields are not needed for this stage
+}
+
+// ParseFetchRequest parses a Fetch v16 request
+func ParseFetchRequest(data []byte) (*FetchRequest, error) {
+	if len(data) < 1 {
+		return nil, fmt.Errorf("request data too short")
+	}
+
+	req := &FetchRequest{
+		Topics: []FetchTopicRequest{},
+	}
+
+	offset := 0
+
+	// Skip client_id (NULLABLE_STRING - 2 byte length)
+	if offset+2 > len(data) {
+		return nil, fmt.Errorf("not enough data for client_id length")
+	}
+	clientIDLen := int(binary.BigEndian.Uint16(data[offset : offset+2]))
+	offset += 2
+	if clientIDLen > 0 {
+		offset += clientIDLen
+	}
+
+	// Skip TAG_BUFFER for request header
+	if offset >= len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading header tag buffer")
+	}
+	offset++
+
+	// Skip various Fetch request fields we don't need yet
+	// max_wait_ms (INT32)
+	offset += 4
+	// min_bytes (INT32)
+	offset += 4
+	// max_bytes (INT32)
+	offset += 4
+	// isolation_level (INT8)
+	offset += 1
+	// session_id (INT32)
+	offset += 4
+	// session_epoch (INT32)
+	offset += 4
+
+	// Read topics (COMPACT_ARRAY)
+	if offset >= len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading topics length")
+	}
+	topicsLen, n := binary.Uvarint(data[offset:])
+	if n <= 0 {
+		return nil, fmt.Errorf("failed to read topics length")
+	}
+	offset += n
+	topicsLen-- // Compact array: length = N + 1
+
+	for i := uint64(0); i < topicsLen; i++ {
+		// Read topic_id (UUID - 16 bytes)
+		if offset+16 > len(data) {
+			return nil, fmt.Errorf("not enough data for topic_id")
+		}
+		var topicID [16]byte
+		copy(topicID[:], data[offset:offset+16])
+		offset += 16
+
+		// Read partitions (COMPACT_ARRAY)
+		if offset >= len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading partitions length")
+		}
+		partitionsLen, n := binary.Uvarint(data[offset:])
+		if n <= 0 {
+			return nil, fmt.Errorf("failed to read partitions length")
+		}
+		offset += n
+		partitionsLen-- // Compact array: length = N + 1
+
+		var partitions []FetchPartitionRequest
+		for j := uint64(0); j < partitionsLen; j++ {
+			// Read partition_index (INT32)
+			if offset+4 > len(data) {
+				return nil, fmt.Errorf("not enough data for partition_index")
+			}
+			partitionIndex := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
+			offset += 4
+
+			// Skip other partition fields we don't need yet
+			// current_leader_epoch (INT32)
+			offset += 4
+			// fetch_offset (INT64)
+			offset += 8
+			// last_fetched_epoch (INT32)
+			offset += 4
+			// log_start_offset (INT64)
+			offset += 8
+			// partition_max_bytes (INT32)
+			offset += 4
+
+			// Skip TAG_BUFFER for partition
+			if offset >= len(data) {
+				return nil, fmt.Errorf("unexpected end of data reading partition tag buffer")
+			}
+			offset++
+
+			partitions = append(partitions, FetchPartitionRequest{
+				PartitionIndex: partitionIndex,
+			})
+		}
+
+		// Skip TAG_BUFFER for topic
+		if offset >= len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading topic tag buffer")
+		}
+		offset++
+
+		req.Topics = append(req.Topics, FetchTopicRequest{
+			TopicID:    topicID,
+			Partitions: partitions,
+		})
+	}
+
+	return req, nil
 }
 
 // Encode encodes the Fetch response to bytes
