@@ -14,8 +14,9 @@ const (
 
 // Error codes
 const (
-	ErrorNone               = 0
-	ErrorUnsupportedVersion = 35
+	ErrorNone                    = 0
+	ErrorUnknownTopicOrPartition = 3
+	ErrorUnsupportedVersion      = 35
 )
 
 // RequestHeader represents a Kafka request header (v2)
@@ -138,4 +139,224 @@ func WriteResponse(w io.Writer, correlationID int32, body []byte) error {
 
 	_, err := w.Write(response)
 	return err
+}
+
+// DescribeTopicPartitionsRequest represents a DescribeTopicPartitions request
+type DescribeTopicPartitionsRequest struct {
+	Topics []TopicRequest
+}
+
+// TopicRequest represents a topic in the request
+type TopicRequest struct {
+	Name string
+}
+
+// ParseDescribeTopicPartitionsRequest parses a DescribeTopicPartitions v0 request
+func ParseDescribeTopicPartitionsRequest(data []byte) (*DescribeTopicPartitionsRequest, error) {
+	if len(data) < 1 {
+		return nil, fmt.Errorf("request data too short")
+	}
+
+	req := &DescribeTopicPartitionsRequest{
+		Topics: []TopicRequest{},
+	}
+
+	offset := 0
+
+	// Skip client_id (COMPACT_NULLABLE_STRING)
+	if offset >= len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading client_id")
+	}
+	clientIDLen := int(data[offset])
+	offset++
+	if clientIDLen > 0 {
+		offset += clientIDLen - 1 // -1 because compact encoding adds 1
+	}
+
+	// Skip TAG_BUFFER for request header
+	if offset >= len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading header tag buffer")
+	}
+	offset++ // TAG_BUFFER
+
+	// Read topics array (COMPACT_ARRAY)
+	if offset >= len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading topics array length")
+	}
+	topicsLen := int(data[offset]) - 1 // Compact array: actual length + 1
+	offset++
+
+	for i := 0; i < topicsLen; i++ {
+		// Read topic name (COMPACT_STRING)
+		if offset >= len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading topic name length")
+		}
+		nameLen := int(data[offset]) - 1 // Compact string: actual length + 1
+		offset++
+
+		if offset+nameLen > len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading topic name")
+		}
+		topicName := string(data[offset : offset+nameLen])
+		offset += nameLen
+
+		req.Topics = append(req.Topics, TopicRequest{Name: topicName})
+
+		// Skip TAG_BUFFER for topic
+		if offset >= len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading topic tag buffer")
+		}
+		offset++ // TAG_BUFFER
+	}
+
+	return req, nil
+}
+
+// DescribeTopicPartitionsResponse represents a DescribeTopicPartitions response
+type DescribeTopicPartitionsResponse struct {
+	ThrottleTimeMs int32
+	Topics         []TopicResponse
+	Cursor         int8 // -1 for null
+}
+
+// TopicResponse represents a topic in the response
+type TopicResponse struct {
+	ErrorCode          int16
+	Name               string
+	TopicID            [16]byte // UUID
+	IsInternal         bool
+	Partitions         []PartitionResponse
+	TopicAuthorizedOps int32
+}
+
+// PartitionResponse represents a partition in the response
+type PartitionResponse struct {
+	ErrorCode       int16
+	PartitionIndex  int32
+	LeaderID        int32
+	LeaderEpoch     int32
+	ReplicaNodes    []int32
+	IsrNodes        []int32
+	EligibleLeaders []int32
+	LastKnownELR    []int32
+	OfflineReplicas []int32
+}
+
+// Encode encodes the DescribeTopicPartitions response to bytes
+func (r *DescribeTopicPartitionsResponse) Encode() []byte {
+	var body []byte
+
+	// throttle_time_ms (INT32)
+	throttle := make([]byte, 4)
+	binary.BigEndian.PutUint32(throttle, uint32(r.ThrottleTimeMs))
+	body = append(body, throttle...)
+
+	// topics array (COMPACT_ARRAY)
+	body = append(body, byte(len(r.Topics)+1))
+
+	for _, topic := range r.Topics {
+		// error_code (INT16)
+		errCode := make([]byte, 2)
+		binary.BigEndian.PutUint16(errCode, uint16(topic.ErrorCode))
+		body = append(body, errCode...)
+
+		// name (COMPACT_STRING)
+		body = append(body, byte(len(topic.Name)+1))
+		body = append(body, []byte(topic.Name)...)
+
+		// topic_id (UUID - 16 bytes)
+		body = append(body, topic.TopicID[:]...)
+
+		// is_internal (BOOLEAN)
+		if topic.IsInternal {
+			body = append(body, 0x01)
+		} else {
+			body = append(body, 0x00)
+		}
+
+		// partitions (COMPACT_ARRAY)
+		body = append(body, byte(len(topic.Partitions)+1))
+
+		for _, partition := range topic.Partitions {
+			// error_code (INT16)
+			partErrCode := make([]byte, 2)
+			binary.BigEndian.PutUint16(partErrCode, uint16(partition.ErrorCode))
+			body = append(body, partErrCode...)
+
+			// partition_index (INT32)
+			partIndex := make([]byte, 4)
+			binary.BigEndian.PutUint32(partIndex, uint32(partition.PartitionIndex))
+			body = append(body, partIndex...)
+
+			// leader_id (INT32)
+			leaderID := make([]byte, 4)
+			binary.BigEndian.PutUint32(leaderID, uint32(partition.LeaderID))
+			body = append(body, leaderID...)
+
+			// leader_epoch (INT32)
+			leaderEpoch := make([]byte, 4)
+			binary.BigEndian.PutUint32(leaderEpoch, uint32(partition.LeaderEpoch))
+			body = append(body, leaderEpoch...)
+
+			// replica_nodes (COMPACT_ARRAY)
+			body = append(body, byte(len(partition.ReplicaNodes)+1))
+			for _, node := range partition.ReplicaNodes {
+				nodeID := make([]byte, 4)
+				binary.BigEndian.PutUint32(nodeID, uint32(node))
+				body = append(body, nodeID...)
+			}
+
+			// isr_nodes (COMPACT_ARRAY)
+			body = append(body, byte(len(partition.IsrNodes)+1))
+			for _, node := range partition.IsrNodes {
+				nodeID := make([]byte, 4)
+				binary.BigEndian.PutUint32(nodeID, uint32(node))
+				body = append(body, nodeID...)
+			}
+
+			// eligible_leader_replicas (COMPACT_ARRAY)
+			body = append(body, byte(len(partition.EligibleLeaders)+1))
+			for _, node := range partition.EligibleLeaders {
+				nodeID := make([]byte, 4)
+				binary.BigEndian.PutUint32(nodeID, uint32(node))
+				body = append(body, nodeID...)
+			}
+
+			// last_known_elr (COMPACT_ARRAY)
+			body = append(body, byte(len(partition.LastKnownELR)+1))
+			for _, node := range partition.LastKnownELR {
+				nodeID := make([]byte, 4)
+				binary.BigEndian.PutUint32(nodeID, uint32(node))
+				body = append(body, nodeID...)
+			}
+
+			// offline_replicas (COMPACT_ARRAY)
+			body = append(body, byte(len(partition.OfflineReplicas)+1))
+			for _, node := range partition.OfflineReplicas {
+				nodeID := make([]byte, 4)
+				binary.BigEndian.PutUint32(nodeID, uint32(node))
+				body = append(body, nodeID...)
+			}
+
+			// TAG_BUFFER (empty)
+			body = append(body, 0x00)
+		}
+
+		// topic_authorized_operations (INT32)
+		authOps := make([]byte, 4)
+		binary.BigEndian.PutUint32(authOps, uint32(topic.TopicAuthorizedOps))
+		body = append(body, authOps...)
+
+		// TAG_BUFFER (empty)
+		body = append(body, 0x00)
+	}
+
+	// next_cursor (INT8 for null, or more complex for actual cursor)
+	// For null cursor, use -1
+	body = append(body, byte(r.Cursor))
+
+	// TAG_BUFFER (empty)
+	body = append(body, 0x00)
+
+	return body
 }

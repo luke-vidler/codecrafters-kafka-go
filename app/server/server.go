@@ -49,7 +49,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// Handle multiple requests on the same connection
 	for {
 		// Read request header
-		header, _, err := protocol.ReadRequestHeader(conn)
+		header, requestBody, err := protocol.ReadRequestHeader(conn)
 		if err != nil {
 			if err.Error() != "failed to read message size: EOF" {
 				log.Printf("Error reading request header: %v", err)
@@ -66,6 +66,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 		switch header.APIKey {
 		case protocol.APIKeyAPIVersions:
 			responseBody = handlers.HandleAPIVersions(header)
+		case protocol.APIKeyDescribeTopicPartitions:
+			responseBody = handlers.HandleDescribeTopicPartitions(header, requestBody)
 		default:
 			// Return UNSUPPORTED_VERSION for unknown API keys
 			responseBody = make([]byte, 2)
