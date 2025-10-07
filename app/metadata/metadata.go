@@ -156,15 +156,21 @@ func (cm *ClusterMetadata) parseRecords(batch *RecordBatch) error {
 	data := batch.Records
 	offset := 0
 
+	fmt.Printf("Parsing batch with %d records, data len=%d\n", batch.RecordCount, len(data))
+
 	for i := int32(0); i < batch.RecordCount; i++ {
 		// Read record length (varint)
 		recordLen, n := binary.Varint(data[offset:])
 		if n <= 0 {
+			fmt.Printf("Failed to read record length at offset %d\n", offset)
 			return fmt.Errorf("failed to read record length")
 		}
 		offset += n
 
+		fmt.Printf("Record %d: length=%d, offset=%d\n", i, recordLen, offset)
+
 		if offset+int(recordLen) > len(data) {
+			fmt.Printf("Record length %d exceeds remaining data %d\n", recordLen, len(data)-offset)
 			return fmt.Errorf("record length exceeds data")
 		}
 
@@ -173,6 +179,7 @@ func (cm *ClusterMetadata) parseRecords(batch *RecordBatch) error {
 
 		// Parse the record
 		if err := cm.parseRecord(recordData); err != nil {
+			fmt.Printf("Error parsing record %d: %v\n", i, err)
 			// Continue on error to be lenient
 			continue
 		}
@@ -183,6 +190,8 @@ func (cm *ClusterMetadata) parseRecords(batch *RecordBatch) error {
 
 func (cm *ClusterMetadata) parseRecord(data []byte) error {
 	offset := 0
+
+	fmt.Printf("Parsing record, data len=%d, hex=%x\n", len(data), data[:min(len(data), 20)])
 
 	// Read attributes (int8)
 	// attributes := int8(data[offset])
@@ -209,6 +218,8 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 	}
 	offset += n
 
+	fmt.Printf("Key length: %d, offset now: %d\n", keyLen, offset)
+
 	// Read key
 	if keyLen > 0 {
 		if offset+int(keyLen) > len(data) {
@@ -217,8 +228,11 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 		key := data[offset : offset+int(keyLen)]
 		offset += int(keyLen)
 
+		fmt.Printf("Key: %x\n", key)
+
 		// Parse the key to get record type
 		recordType := parseRecordType(key)
+		fmt.Printf("Record type: %d\n", recordType)
 
 		// Read value length (varint)
 		valueLen, n := binary.Varint(data[offset:])
@@ -226,6 +240,8 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 			return fmt.Errorf("failed to read value length")
 		}
 		offset += n
+
+		fmt.Printf("Value length: %d\n", valueLen)
 
 		// Read value
 		if valueLen > 0 {
@@ -237,14 +253,25 @@ func (cm *ClusterMetadata) parseRecord(data []byte) error {
 			// Parse based on record type
 			switch recordType {
 			case 2: // TopicRecord
+				fmt.Printf("Parsing TopicRecord...\n")
 				cm.parseTopicRecord(value)
 			case 3: // PartitionRecord
+				fmt.Printf("Parsing PartitionRecord...\n")
 				cm.parsePartitionRecord(value)
+			default:
+				fmt.Printf("Unknown record type: %d\n", recordType)
 			}
 		}
 	}
 
 	return nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func parseRecordType(key []byte) int8 {
