@@ -340,6 +340,8 @@ func parseRecordTypeFromValue(value []byte) int8 {
 func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 	offset := 0
 
+	fmt.Printf("parseTopicRecord: data len=%d, hex=%x\n", len(data), data)
+
 	// Read topic name (COMPACT_STRING)
 	nameLen, n := readVarint(data[offset:])
 	if n <= 0 {
@@ -348,15 +350,19 @@ func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 	offset += n
 	nameLen-- // Compact string encoding
 
+	fmt.Printf("Topic name length: %d (after decoding), offset: %d\n", nameLen, offset)
+
 	if offset+nameLen > len(data) {
-		return fmt.Errorf("name length exceeds data")
+		return fmt.Errorf("name length %d exceeds data: offset=%d, data len=%d", nameLen, offset, len(data))
 	}
 	name := string(data[offset : offset+nameLen])
 	offset += nameLen
 
+	fmt.Printf("Topic name: %s, offset now: %d\n", name, offset)
+
 	// Read topic ID (UUID - 16 bytes)
 	if offset+16 > len(data) {
-		return fmt.Errorf("not enough data for topic ID")
+		return fmt.Errorf("not enough data for topic ID: need %d, have %d", offset+16, len(data))
 	}
 	var topicID [16]byte
 	copy(topicID[:], data[offset:offset+16])
