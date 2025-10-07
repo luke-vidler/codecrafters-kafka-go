@@ -78,7 +78,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 		switch header.APIKey {
 		case protocol.APIKeyFetch:
-			responseBody = handlers.HandleFetch(header, requestBody)
+			responseBody = handlers.HandleFetch(header, requestBody, s.clusterMetadata)
 			useFlexibleResponse = true // Fetch v16 uses flexible response header
 		case protocol.APIKeyAPIVersions:
 			responseBody = handlers.HandleAPIVersions(header)

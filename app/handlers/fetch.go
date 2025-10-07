@@ -3,11 +3,12 @@ package handlers
 import (
 	"log"
 
+	"github.com/codecrafters-io/kafka-starter-go/app/metadata"
 	"github.com/codecrafters-io/kafka-starter-go/app/protocol"
 )
 
 // HandleFetch handles the Fetch API request
-func HandleFetch(header *protocol.RequestHeader, requestBody []byte) []byte {
+func HandleFetch(header *protocol.RequestHeader, requestBody []byte, clusterMetadata *metadata.ClusterMetadata) []byte {
 	// Parse the Fetch request
 	req, err := protocol.ParseFetchRequest(requestBody)
 	if err != nil {
@@ -25,21 +26,67 @@ func HandleFetch(header *protocol.RequestHeader, requestBody []byte) []byte {
 	// Build response for each requested topic
 	var topicResponses []protocol.FetchTopicResponse
 	for _, topicReq := range req.Topics {
-		// For now, treat all topics as unknown
-		// Build partition responses with UNKNOWN_TOPIC_ID error
+		// Check if topic exists in metadata
+		topicMeta, exists := clusterMetadata.TopicsByID[topicReq.TopicID]
+
 		var partitionResponses []protocol.FetchPartitionResponse
-		for _, partReq := range topicReq.Partitions {
-			partResp := protocol.FetchPartitionResponse{
-				PartitionIndex:       partReq.PartitionIndex,
-				ErrorCode:            protocol.ErrorUnknownTopicID,
-				HighWatermark:        -1,
-				LastStableOffset:     -1,
-				LogStartOffset:       -1,
-				AbortedTransactions:  []protocol.AbortedTransaction{},
-				PreferredReadReplica: -1,
-				Records:              []byte{},
+		if !exists {
+			// Topic not found - return UNKNOWN_TOPIC_ID error
+			for _, partReq := range topicReq.Partitions {
+				partResp := protocol.FetchPartitionResponse{
+					PartitionIndex:       partReq.PartitionIndex,
+					ErrorCode:            protocol.ErrorUnknownTopicID,
+					HighWatermark:        -1,
+					LastStableOffset:     -1,
+					LogStartOffset:       -1,
+					AbortedTransactions:  []protocol.AbortedTransaction{},
+					PreferredReadReplica: -1,
+					Records:              []byte{},
+				}
+				partitionResponses = append(partitionResponses, partResp)
 			}
-			partitionResponses = append(partitionResponses, partResp)
+		} else {
+			// Topic exists - return partition data
+			partitions := clusterMetadata.Partitions[topicMeta.TopicID]
+
+			for _, partReq := range topicReq.Partitions {
+				// Check if requested partition exists
+				var partMeta *metadata.PartitionMetadata
+				for _, p := range partitions {
+					if p.PartitionID == partReq.PartitionIndex {
+						partMeta = p
+						break
+					}
+				}
+
+				if partMeta == nil {
+					// Partition not found
+					partResp := protocol.FetchPartitionResponse{
+						PartitionIndex:       partReq.PartitionIndex,
+						ErrorCode:            protocol.ErrorUnknownTopicOrPartition,
+						HighWatermark:        -1,
+						LastStableOffset:     -1,
+						LogStartOffset:       -1,
+						AbortedTransactions:  []protocol.AbortedTransaction{},
+						PreferredReadReplica: -1,
+						Records:              []byte{},
+					}
+					partitionResponses = append(partitionResponses, partResp)
+				} else {
+					// Partition exists - return empty records (for now)
+					partResp := protocol.FetchPartitionResponse{
+						PartitionIndex:       partReq.PartitionIndex,
+						ErrorCode:            protocol.ErrorNone,
+						HighWatermark:        0, // Empty topic
+						LastStableOffset:     0,
+						LogStartOffset:       0,
+						AbortedTransactions:  []protocol.AbortedTransaction{},
+						PreferredReadReplica: -1,
+						Records:              []byte{},
+					}
+					partitionResponses = append(partitionResponses, partResp)
+				}
+			}
 		}
 
 		topicResp := protocol.FetchTopicResponse{
