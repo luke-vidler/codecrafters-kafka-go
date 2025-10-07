@@ -8,7 +8,8 @@ import (
 
 // API Keys
 const (
-	APIKeyAPIVersions = 18
+	APIKeyAPIVersions             = 18
+	APIKeyDescribeTopicPartitions = 75
 )
 
 // Error codes

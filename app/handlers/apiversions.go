@@ -26,6 +26,11 @@ func HandleAPIVersions(header *protocol.RequestHeader) []byte {
 				MinVersion: 0,
 				MaxVersion: 4,
 			},
+			{
+				APIKey:     protocol.APIKeyDescribeTopicPartitions,
+				MinVersion: 0,
+				MaxVersion: 0,
+			},
 		},
 		ThrottleTimeMs: 0,
 	}
