@@ -47,6 +47,7 @@ func (cm *ClusterMetadata) LoadFromLog(logPath string) error {
 	}
 	defer file.Close()
 
+	batchCount := 0
 	for {
 		// Read record batch
 		batch, err := readRecordBatch(file)
@@ -57,12 +58,18 @@ func (cm *ClusterMetadata) LoadFromLog(logPath string) error {
 			return fmt.Errorf("failed to read record batch: %w", err)
 		}
 
+		batchCount++
+		fmt.Printf("Read batch %d: %d records\n", batchCount, batch.RecordCount)
+
 		// Parse records in the batch
 		if err := cm.parseRecords(batch); err != nil {
-			return fmt.Errorf("failed to parse records: %w", err)
+			fmt.Printf("Error parsing records in batch %d: %v\n", batchCount, err)
+			// Continue to next batch instead of failing
+			continue
 		}
 	}
 
+	fmt.Printf("Total batches read: %d\n", batchCount)
 	return nil
 }
 
@@ -282,6 +289,7 @@ func (cm *ClusterMetadata) parseTopicRecord(data []byte) error {
 	cm.Topics[name] = topic
 	cm.TopicsByID[topicID] = topic
 
+	fmt.Printf("Parsed TopicRecord: name=%s, topicID=%x\n", name, topicID)
 	return nil
 }
 
