@@ -59,6 +59,31 @@ func ReadRequestHeader(r io.Reader) (*RequestHeader, []byte, error) {
 	return header, messageBuf[8:], nil
 }
 
+// skipClientIDAndTagBuffer skips the client_id (NULLABLE_STRING) and TAG_BUFFER
+// that appear at the beginning of flexible request bodies
+func skipClientIDAndTagBuffer(data []byte, offset int) (int, error) {
+	// Skip client_id (NULLABLE_STRING - 2 byte length)
+	if offset+2 > len(data) {
+		return offset, fmt.Errorf("not enough data for client_id length")
+	}
+	clientIDLen := int(int16(binary.BigEndian.Uint16(data[offset : offset+2])))
+	offset += 2
+	if clientIDLen > 0 {
+		if offset+clientIDLen > len(data) {
+			return offset, fmt.Errorf("client_id length exceeds data")
+		}
+		offset += clientIDLen
+	}
+
+	// Skip TAG_BUFFER for request header
+	if offset >= len(data) {
+		return offset, fmt.Errorf("not enough data for TAG_BUFFER")
+	}
+	offset++
+
+	return offset, nil
+}
+
 // ResponseHeader represents a Kafka response header (v0)
 type ResponseHeader struct {
 	MessageSize   int32
@@ -219,21 +244,12 @@ func ParseFetchRequest(data []byte) (*FetchRequest, error) {
 
 	offset := 0
 
-	// Skip client_id (NULLABLE_STRING - 2 byte length)
-	if offset+2 > len(data) {
-		return nil, fmt.Errorf("not enough data for client_id length")
+	// Skip client_id and TAG_BUFFER
+	var err error
+	offset, err = skipClientIDAndTagBuffer(data, offset)
+	if err != nil {
+		return nil, err
 	}
-	clientIDLen := int(binary.BigEndian.Uint16(data[offset : offset+2]))
-	offset += 2
-	if clientIDLen > 0 {
-		offset += clientIDLen
-	}
-
-	// Skip TAG_BUFFER for request header
-	if offset >= len(data) {
-		return nil, fmt.Errorf("unexpected end of data reading header tag buffer")
-	}
-	offset++
 
 	// Skip various Fetch request fields we don't need yet
 	// max_wait_ms (INT32)
@@ -422,24 +438,12 @@ func ParseDescribeTopicPartitionsRequest(data []byte) (*DescribeTopicPartitionsR
 
 	offset := 0
 
-	// Skip client_id (NULLABLE_STRING - not compact format)
-	// Read 2-byte length (INT16)
-	if offset+2 > len(data) {
-		return nil, fmt.Errorf("unexpected end of data reading client_id length")
+	// Skip client_id and TAG_BUFFER
+	var err error
+	offset, err = skipClientIDAndTagBuffer(data, offset)
+	if err != nil {
+		return nil, err
 	}
-	clientIDLen := int(binary.BigEndian.Uint16(data[offset : offset+2]))
-	offset += 2
-
-	// Skip client_id string content (if clientIDLen is -1, it's null)
-	if clientIDLen > 0 {
-		offset += clientIDLen
-	}
-
-	// Skip TAG_BUFFER for request header (for flexible versions)
-	if offset >= len(data) {
-		return nil, fmt.Errorf("unexpected end of data reading header tag buffer")
-	}
-	offset++ // TAG_BUFFER
 
 	// Read topics array (COMPACT_ARRAY)
 	if offset >= len(data) {
@@ -631,21 +635,12 @@ func ParseProduceRequest(data []byte) (*ProduceRequest, error) {
 
 	offset := 0
 
-	// Skip client_id (NULLABLE_STRING - 2 byte length)
-	if offset+2 > len(data) {
-		return nil, fmt.Errorf("unexpected end of data reading client_id length at offset %d", offset)
+	// Skip client_id and TAG_BUFFER
+	var err error
+	offset, err = skipClientIDAndTagBuffer(data, offset)
+	if err != nil {
+		return nil, err
 	}
-	clientIDLen := int(int16(binary.BigEndian.Uint16(data[offset : offset+2])))
-	offset += 2
-	if clientIDLen > 0 {
-		offset += clientIDLen
-	}
-
-	// Skip TAG_BUFFER for request header
-	if offset >= len(data) {
-		return nil, fmt.Errorf("unexpected end of data reading header tag buffer at offset %d", offset)
-	}
-	offset++
 
 	// Skip transactional_id (COMPACT_NULLABLE_STRING)
 	if offset >= len(data) {

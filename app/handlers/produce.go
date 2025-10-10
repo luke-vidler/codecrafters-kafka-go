@@ -5,6 +5,28 @@ import (
 	"github.com/codecrafters-io/kafka-starter-go/app/protocol"
 )
 
+// createErrorPartitionResponse creates a partition response with an error
+func createErrorPartitionResponse(partitionIndex int32) protocol.ProducePartitionResponse {
+	return protocol.ProducePartitionResponse{
+		Index:           partitionIndex,
+		ErrorCode:       protocol.ErrorUnknownTopicOrPartition,
+		BaseOffset:      -1,
+		LogAppendTimeMs: -1,
+		LogStartOffset:  -1,
+	}
+}
+
+// createSuccessPartitionResponse creates a partition response for a successful produce
+func createSuccessPartitionResponse(partitionIndex int32) protocol.ProducePartitionResponse {
+	return protocol.ProducePartitionResponse{
+		Index:           partitionIndex,
+		ErrorCode:       protocol.ErrorNone,
+		BaseOffset:      0,
+		LogAppendTimeMs: -1,
+		LogStartOffset:  0,
+	}
+}
+
 // HandleProduce handles the Produce API request
 func HandleProduce(header *protocol.RequestHeader, requestData []byte, clusterMetadata *metadata.ClusterMetadata) []byte {
 	// Parse the Produce request
@@ -28,50 +50,26 @@ func HandleProduce(header *protocol.RequestHeader, requestData []byte, clusterMe
 		if !clusterMetadata.TopicExists(topic.Name) {
 			// Topic doesn't exist - return error for all partitions
 			for _, partition := range topic.Partitions {
-				partitionResponses = append(partitionResponses, protocol.ProducePartitionResponse{
-					Index:           partition.Index,
-					ErrorCode:       protocol.ErrorUnknownTopicOrPartition,
-					BaseOffset:      -1,
-					LogAppendTimeMs: -1,
-					LogStartOffset:  -1,
-				})
+				partitionResponses = append(partitionResponses, createErrorPartitionResponse(partition.Index))
 			}
 		} else {
 			// Topic exists - check each partition
 			for _, partition := range topic.Partitions {
 				if !clusterMetadata.PartitionExists(topic.Name, partition.Index) {
 					// Partition doesn't exist
-					partitionResponses = append(partitionResponses, protocol.ProducePartitionResponse{
-						Index:           partition.Index,
-						ErrorCode:       protocol.ErrorUnknownTopicOrPartition,
-						BaseOffset:      -1,
-						LogAppendTimeMs: -1,
-						LogStartOffset:  -1,
-					})
+					partitionResponses = append(partitionResponses, createErrorPartitionResponse(partition.Index))
 				} else {
 					// Both topic and partition exist - persist records and return success
 					// Write the record batch to disk if records are present
 					if len(partition.Records) > 0 {
 						if err := metadata.WriteRecordBatch(topic.Name, partition.Index, partition.Records); err != nil {
 							// If writing fails, return an error
-							partitionResponses = append(partitionResponses, protocol.ProducePartitionResponse{
-								Index:           partition.Index,
-								ErrorCode:       protocol.ErrorUnknownTopicOrPartition, // Use generic error
-								BaseOffset:      -1,
-								LogAppendTimeMs: -1,
-								LogStartOffset:  -1,
-							})
+							partitionResponses = append(partitionResponses, createErrorPartitionResponse(partition.Index))
 							continue
 						}
 					}
 
-					partitionResponses = append(partitionResponses, protocol.ProducePartitionResponse{
-						Index:           partition.Index,
-						ErrorCode:       protocol.ErrorNone,
-						BaseOffset:      0,
-						LogAppendTimeMs: -1,
-						LogStartOffset:  0,
-					})
+					partitionResponses = append(partitionResponses, createSuccessPartitionResponse(partition.Index))
 				}
 			}
 		}
