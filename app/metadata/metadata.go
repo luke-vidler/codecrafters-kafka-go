@@ -479,6 +479,36 @@ func ReadPartitionLog(topicName string, partitionID int32) ([]byte, error) {
 	return data, nil
 }
 
+// WriteRecordBatch writes a RecordBatch to the partition log file
+// The recordBatch parameter should contain the raw RecordBatch data from the Produce request
+func WriteRecordBatch(topicName string, partitionID int32, recordBatch []byte) error {
+	logDir := fmt.Sprintf("/tmp/kraft-combined-logs/%s-%d", topicName, partitionID)
+	logPath := fmt.Sprintf("%s/00000000000000000000.log", logDir)
+
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	// Open file in append mode, create if doesn't exist
+	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer file.Close()
+
+	// Write the RecordBatch to the log file
+	// The recordBatch should already be in the correct format with:
+	// - base_offset (8 bytes)
+	// - batch_length (4 bytes)
+	// - rest of the RecordBatch
+	if _, err := file.Write(recordBatch); err != nil {
+		return fmt.Errorf("failed to write record batch: %w", err)
+	}
+
+	return nil
+}
+
 // TopicExists checks if a topic exists in the cluster metadata
 func (cm *ClusterMetadata) TopicExists(topicName string) bool {
 	_, exists := cm.Topics[topicName]

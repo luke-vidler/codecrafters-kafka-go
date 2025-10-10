@@ -49,7 +49,22 @@ func HandleProduce(header *protocol.RequestHeader, requestData []byte, clusterMe
 						LogStartOffset:  -1,
 					})
 				} else {
-					// Both topic and partition exist - return success
+					// Both topic and partition exist - persist records and return success
+					// Write the record batch to disk if records are present
+					if len(partition.Records) > 0 {
+						if err := metadata.WriteRecordBatch(topic.Name, partition.Index, partition.Records); err != nil {
+							// If writing fails, return an error
+							partitionResponses = append(partitionResponses, protocol.ProducePartitionResponse{
+								Index:           partition.Index,
+								ErrorCode:       protocol.ErrorUnknownTopicOrPartition, // Use generic error
+								BaseOffset:      -1,
+								LogAppendTimeMs: -1,
+								LogStartOffset:  -1,
+							})
+							continue
+						}
+					}
+
 					partitionResponses = append(partitionResponses, protocol.ProducePartitionResponse{
 						Index:           partition.Index,
 						ErrorCode:       protocol.ErrorNone,

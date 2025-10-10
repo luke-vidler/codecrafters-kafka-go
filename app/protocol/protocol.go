@@ -706,21 +706,25 @@ func ParseProduceRequest(data []byte) (*ProduceRequest, error) {
 			partitionIndex := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
 			offset += 4
 
-			// Read records (COMPACT_BYTES, not varint - just a single byte for length when null)
+			// Read records (COMPACT_NULLABLE_BYTES - uses varint for length)
 			if offset >= len(data) {
 				return nil, fmt.Errorf("unexpected end of data reading records length at offset %d", offset)
 			}
-			recordsByte := data[offset]
-			offset++
 
 			var records []byte
-			if recordsByte > 0 {
-				recordsLen := int(recordsByte) - 1
-				if offset+recordsLen > len(data) {
+			recordsLen, n := binary.Uvarint(data[offset:])
+			if n <= 0 {
+				return nil, fmt.Errorf("failed to read records length at offset %d", offset)
+			}
+			offset += n
+
+			if recordsLen > 0 {
+				recordsLen-- // Compact format: actual length + 1
+				if offset+int(recordsLen) > len(data) {
 					return nil, fmt.Errorf("unexpected end of data reading records at offset %d", offset)
 				}
-				records = data[offset : offset+recordsLen]
-				offset += recordsLen
+				records = data[offset : offset+int(recordsLen)]
+				offset += int(recordsLen)
 			}
 
 			partitions = append(partitions, ProducePartitionRequest{
