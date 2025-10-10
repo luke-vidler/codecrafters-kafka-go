@@ -625,7 +625,6 @@ func ParseProduceRequest(data []byte) (*ProduceRequest, error) {
 		return nil, fmt.Errorf("request data too short")
 	}
 
-
 	req := &ProduceRequest{
 		Topics: []ProduceTopicRequest{},
 	}
@@ -772,6 +771,12 @@ type ProducePartitionResponse struct {
 	LogStartOffset  int64
 }
 
+// RecordError represents a record error in the Produce response
+type RecordError struct {
+	BatchIndex             int32
+	BatchIndexErrorMessage string
+}
+
 // Encode encodes the Produce response to bytes
 func (r *ProduceResponse) Encode() []byte {
 	var body []byte
@@ -802,6 +807,12 @@ func (r *ProduceResponse) Encode() []byte {
 
 			// log_start_offset (INT64)
 			body = append(body, EncodeInt64(partition.LogStartOffset)...)
+
+			// record_errors (COMPACT_ARRAY) - always empty/null for error responses
+			body = append(body, 0x00) // null array
+
+			// error_message (COMPACT_NULLABLE_STRING) - always null for now
+			body = append(body, 0x00) // null string
 
 			// TAG_BUFFER (empty)
 			body = append(body, EncodeTagBuffer()...)
