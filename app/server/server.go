@@ -77,6 +77,9 @@ func (s *Server) handleConnection(conn net.Conn) {
 		var useFlexibleResponse bool
 
 		switch header.APIKey {
+		case protocol.APIKeyProduce:
+			responseBody = handlers.HandleProduce(header, requestBody)
+			useFlexibleResponse = true // Produce v11 uses flexible response header
 		case protocol.APIKeyFetch:
 			responseBody = handlers.HandleFetch(header, requestBody, s.clusterMetadata)
 			useFlexibleResponse = true // Fetch v16 uses flexible response header

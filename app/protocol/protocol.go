@@ -601,3 +601,221 @@ func (r *DescribeTopicPartitionsResponse) Encode() []byte {
 
 	return body
 }
+
+// ProduceRequest represents a Produce API request
+type ProduceRequest struct {
+	Topics []ProduceTopicRequest
+}
+
+// ProduceTopicRequest represents a topic in the Produce request
+type ProduceTopicRequest struct {
+	Name       string
+	Partitions []ProducePartitionRequest
+}
+
+// ProducePartitionRequest represents a partition in the Produce request
+type ProducePartitionRequest struct {
+	Index   int32
+	Records []byte
+}
+
+// ParseProduceRequest parses a Produce v11 request
+func ParseProduceRequest(data []byte) (*ProduceRequest, error) {
+	if len(data) < 3 {
+		return nil, fmt.Errorf("request data too short")
+	}
+
+
+	req := &ProduceRequest{
+		Topics: []ProduceTopicRequest{},
+	}
+
+	offset := 0
+
+	// Skip client_id (NULLABLE_STRING - 2 byte length)
+	if offset+2 > len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading client_id length at offset %d", offset)
+	}
+	clientIDLen := int(int16(binary.BigEndian.Uint16(data[offset : offset+2])))
+	offset += 2
+	if clientIDLen > 0 {
+		offset += clientIDLen
+	}
+
+	// Skip TAG_BUFFER for request header
+	if offset >= len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading header tag buffer at offset %d", offset)
+	}
+	offset++
+
+	// Skip transactional_id (COMPACT_NULLABLE_STRING)
+	if offset >= len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading transactional_id at offset %d", offset)
+	}
+	transactionalIDLen := int(data[offset])
+	offset++
+	if transactionalIDLen > 1 {
+		offset += transactionalIDLen - 1
+	}
+
+	// Skip acks (INT16)
+	if offset+2 > len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading acks at offset %d", offset)
+	}
+	offset += 2
+
+	// Skip timeout_ms (INT32)
+	if offset+4 > len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading timeout_ms at offset %d", offset)
+	}
+	offset += 4
+
+	// Read topics array (COMPACT_ARRAY)
+	if offset >= len(data) {
+		return nil, fmt.Errorf("unexpected end of data reading topics array length at offset %d", offset)
+	}
+	topicsLen := int(data[offset]) - 1 // Compact array: actual length + 1
+	offset++
+
+	for i := 0; i < topicsLen; i++ {
+		// Read topic name (COMPACT_STRING)
+		if offset >= len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading topic name length at offset %d", offset)
+		}
+		nameLen := int(data[offset]) - 1 // Compact string: actual length + 1
+		offset++
+
+		if offset+nameLen > len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading topic name at offset %d, nameLen %d, data len %d", offset, nameLen, len(data))
+		}
+		topicName := string(data[offset : offset+nameLen])
+		offset += nameLen
+
+		// Read partitions array (COMPACT_ARRAY)
+		if offset >= len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading partitions array length at offset %d", offset)
+		}
+		partitionsLen := int(data[offset]) - 1
+		offset++
+
+		var partitions []ProducePartitionRequest
+		for j := 0; j < partitionsLen; j++ {
+			// Read partition index (INT32)
+			if offset+4 > len(data) {
+				return nil, fmt.Errorf("unexpected end of data reading partition index at offset %d", offset)
+			}
+			partitionIndex := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
+			offset += 4
+
+			// Read records (COMPACT_BYTES, not varint - just a single byte for length when null)
+			if offset >= len(data) {
+				return nil, fmt.Errorf("unexpected end of data reading records length at offset %d", offset)
+			}
+			recordsByte := data[offset]
+			offset++
+
+			var records []byte
+			if recordsByte > 0 {
+				recordsLen := int(recordsByte) - 1
+				if offset+recordsLen > len(data) {
+					return nil, fmt.Errorf("unexpected end of data reading records at offset %d", offset)
+				}
+				records = data[offset : offset+recordsLen]
+				offset += recordsLen
+			}
+
+			partitions = append(partitions, ProducePartitionRequest{
+				Index:   partitionIndex,
+				Records: records,
+			})
+
+			// Skip TAG_BUFFER for partition
+			if offset >= len(data) {
+				return nil, fmt.Errorf("unexpected end of data reading partition tag buffer")
+			}
+			offset++
+		}
+
+		req.Topics = append(req.Topics, ProduceTopicRequest{
+			Name:       topicName,
+			Partitions: partitions,
+		})
+
+		// Skip TAG_BUFFER for topic
+		if offset >= len(data) {
+			return nil, fmt.Errorf("unexpected end of data reading topic tag buffer")
+		}
+		offset++
+	}
+
+	return req, nil
+}
+
+// ProduceResponse represents a Produce API response
+type ProduceResponse struct {
+	Topics         []ProduceTopicResponse
+	ThrottleTimeMs int32
+}
+
+// ProduceTopicResponse represents a topic in the Produce response
+type ProduceTopicResponse struct {
+	Name       string
+	Partitions []ProducePartitionResponse
+}
+
+// ProducePartitionResponse represents a partition in the Produce response
+type ProducePartitionResponse struct {
+	Index           int32
+	ErrorCode       int16
+	BaseOffset      int64
+	LogAppendTimeMs int64
+	LogStartOffset  int64
+}
+
+// Encode encodes the Produce response to bytes
+func (r *ProduceResponse) Encode() []byte {
+	var body []byte
+
+	// topics array (COMPACT_ARRAY)
+	body = append(body, EncodeCompactArrayLength(len(r.Topics)))
+
+	for _, topic := range r.Topics {
+		// name (COMPACT_STRING)
+		body = append(body, byte(len(topic.Name)+1))
+		body = append(body, []byte(topic.Name)...)
+
+		// partitions (COMPACT_ARRAY)
+		body = append(body, EncodeCompactArrayLength(len(topic.Partitions)))
+
+		for _, partition := range topic.Partitions {
+			// index (INT32)
+			body = append(body, EncodeInt32(partition.Index)...)
+
+			// error_code (INT16)
+			body = append(body, EncodeInt16(partition.ErrorCode)...)
+
+			// base_offset (INT64)
+			body = append(body, EncodeInt64(partition.BaseOffset)...)
+
+			// log_append_time_ms (INT64)
+			body = append(body, EncodeInt64(partition.LogAppendTimeMs)...)
+
+			// log_start_offset (INT64)
+			body = append(body, EncodeInt64(partition.LogStartOffset)...)
+
+			// TAG_BUFFER (empty)
+			body = append(body, EncodeTagBuffer()...)
+		}
+
+		// TAG_BUFFER (empty) for topic
+		body = append(body, EncodeTagBuffer()...)
+	}
+
+	// throttle_time_ms (INT32)
+	body = append(body, EncodeInt32(r.ThrottleTimeMs)...)
+
+	// TAG_BUFFER (empty) for response
+	body = append(body, EncodeTagBuffer()...)
+
+	return body
+}
