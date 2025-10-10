@@ -478,3 +478,38 @@ func ReadPartitionLog(topicName string, partitionID int32) ([]byte, error) {
 
 	return data, nil
 }
+
+// TopicExists checks if a topic exists in the cluster metadata
+func (cm *ClusterMetadata) TopicExists(topicName string) bool {
+	_, exists := cm.Topics[topicName]
+	return exists
+}
+
+// GetTopicID returns the topic ID for a given topic name
+func (cm *ClusterMetadata) GetTopicID(topicName string) ([16]byte, bool) {
+	topic, exists := cm.Topics[topicName]
+	if !exists {
+		return [16]byte{}, false
+	}
+	return topic.TopicID, true
+}
+
+// PartitionExists checks if a partition exists for a given topic
+func (cm *ClusterMetadata) PartitionExists(topicName string, partitionIndex int32) bool {
+	topicID, exists := cm.GetTopicID(topicName)
+	if !exists {
+		return false
+	}
+
+	partitions, exists := cm.Partitions[topicID]
+	if !exists {
+		return false
+	}
+
+	for _, partition := range partitions {
+		if partition.PartitionID == partitionIndex {
+			return true
+		}
+	}
+	return false
+}
